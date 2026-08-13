@@ -332,6 +332,7 @@ function setStatus(state, text){
 }
 
 let tokenClient;
+let isSilentAttempt = false; // true while we're auto-trying to sign a returning user in quietly
 
 function isIOSDevice(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -377,10 +378,18 @@ window.addEventListener('load', () => {
     scope: DRIVE_SCOPE,
     callback: async (resp) => {
       if (resp.error) {
+        if (isSilentAttempt) {
+          // Quiet auto sign-in attempt failed (session expired / cookies blocked) —
+          // just show the normal gate with the Sign-In button, no scary error.
+          isSilentAttempt = false;
+          setStatus('off', 'Ready');
+          return;
+        }
         setStatus('off','Sign-in failed');
         showGsiError('Sign-in poora nahi hua (' + resp.error + '). Dobara "Sign in with Google" button dabayein.');
         return;
       }
+      isSilentAttempt = false;
       accessToken = resp.access_token;
       $('gsiErrBox') && $('gsiErrBox').classList.add('app-hidden');
       try{
@@ -397,6 +406,12 @@ window.addEventListener('load', () => {
       await afterSignedIn();
     },
     error_callback: (err) => {
+      if (isSilentAttempt) {
+        // Quiet auto sign-in couldn't run silently — fall back to the normal gate.
+        isSilentAttempt = false;
+        setStatus('off', 'Ready');
+        return;
+      }
       setStatus('off','Sign-in failed');
       showIOSWarningIfNeeded();
       showGsiError('Sign-in popup band ho gaya bina complete hue. Agar aap Home Screen icon se app khol rahe hain, ye Google ka security restriction hai — upar diya gaya fix try karein. Warna, dobara button dabayein.');
@@ -407,9 +422,22 @@ window.addEventListener('load', () => {
   const signInBtn = $('gsiBtn');
   if (signInBtn){
     signInBtn.addEventListener('click', () => {
+      isSilentAttempt = false;
       $('gsiErrBox') && $('gsiErrBox').classList.add('app-hidden');
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      // Empty prompt lets Google skip the consent screen for a returning,
+      // already-approved user — noticeably faster than forcing it every time.
+      tokenClient.requestAccessToken({ prompt: '' });
     });
+  }
+
+  // AUTO SIGN-IN: if this browser signed in before, silently try to get a
+  // token right away so the person lands straight inside the app without
+  // tapping "Sign in with Google" again. If the browser/session blocks the
+  // silent attempt, it just falls back to the normal Sign-In button.
+  if (localStorage.getItem('or_last_signed_in') === '1'){
+    isSilentAttempt = true;
+    setStatus('saving', 'Signing you in…');
+    tokenClient.requestAccessToken({ prompt: '' });
   }
 });
 
@@ -481,11 +509,7 @@ function myDataFileName(){
 async function ensureFileForUser(){
   let qf = encodeURIComponent(`name='${myDataFileName()}' and '${SHARED_FOLDER_ID}' in parents and trashed=false`);
   let resf = await (await driveFetch(`${DRIVE_API}/files?q=${qf}&fields=files(id,name)`)).json();
-  if (resf.files && resf.files.length){
-    fileId = resf.files[0].id;
-  } else {
-    fileId = null;
-  }
+  fileId = (resf.files && resf.files.length) ? resf.files[0].id : null;
 
   isAdmin = !!(userEmail && userEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase());
   if (isAdmin){
@@ -494,15 +518,16 @@ async function ensureFileForUser(){
   }
 }
 
+// File content + Recovery Standards are independent of each other, so fetch
+// them in parallel instead of one-after-another — cuts sign-in load time roughly in half.
 async function loadFromDrive(){
-  if (fileId){
-    try{
-      const r = await driveFetch(`${DRIVE_API}/files/${fileId}?alt=media`);
-      const data = await r.json();
-      if (data.oilRecovery) oilRecovery = data.oilRecovery;
-    }catch(e){ console.warn('Load failed', e); }
-  }
-  oilStandards = await loadOilStandards();
+  const fileTask = fileId
+    ? driveFetch(`${DRIVE_API}/files/${fileId}?alt=media`).then(r=>r.json()).catch(e=>{ console.warn('Load failed', e); return null; })
+    : Promise.resolve(null);
+  const stdTask = loadOilStandards();
+  const [data, std] = await Promise.all([fileTask, stdTask]);
+  if (data && data.oilRecovery) oilRecovery = data.oilRecovery;
+  oilStandards = std;
 }
 
 const OIL_STD_FILE = "oil_recovery_standards.json";
