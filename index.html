@@ -283,7 +283,13 @@
                 <td class="num" id="orRngFreshOpen">0.00</td><td class="num" id="orRngBncOpen">0.00</td><td class="num" id="orRngReclaimOpen">0.00</td><td class="num" id="orRngTotOpen">0.00</td></tr>
               <tr><td>Received During Month</td>
                 <td class="num" id="orRngFreshRecv">0.00</td><td class="num" id="orRngBncRecv">0.00</td><td class="num" id="orRngReclaimRecv">0.00</td><td class="num" id="orRngTotRecv">0.00</td></tr>
-              <tr><td>Issued for TF Repairing / Dist. / Other</td>
+              <tr><td>Issued for TF Repairing</td>
+                <td class="num" id="orRngFreshIssTF">0.00</td><td class="num" id="orRngBncIssTF">0.00</td><td class="num" id="orRngReclaimIssTF">0.00</td><td class="num" id="orRngTotIssTF">0.00</td></tr>
+              <tr><td>Issued to Dist. Division</td>
+                <td class="num" id="orRngFreshIssDist">0.00</td><td class="num" id="orRngBncIssDist">0.00</td><td class="num" id="orRngReclaimIssDist">0.00</td><td class="num" id="orRngTotIssDist">0.00</td></tr>
+              <tr><td>Issued to Other Workshop / B&amp;C Oil Issue for Reclaim</td>
+                <td class="num" id="orRngFreshIssOther">0.00</td><td class="num" id="orRngBncIssOther">0.00</td><td class="num" id="orRngReclaimIssOther">0.00</td><td class="num" id="orRngTotIssOther">0.00</td></tr>
+              <tr style="font-weight:600;background:var(--steel-light)"><td>Total Issued</td>
                 <td class="num" id="orRngFreshIss">0.00</td><td class="num" id="orRngBncIss">0.00</td><td class="num" id="orRngReclaimIss">0.00</td><td class="num" id="orRngTotIss">0.00</td></tr>
               <tr style="font-weight:700"><td>Closing Balance <span style="font-weight:400;color:var(--text-mute)">(To month end)</span></td>
                 <td class="num" id="orRngFreshClose">0.00</td><td class="num" id="orRngBncClose">0.00</td><td class="num" id="orRngReclaimClose">0.00</td><td class="num" id="orRngTotClose">0.00</td></tr>
@@ -803,6 +809,9 @@ function aggregateOilRange(list, fromV, toV){
     repairedByCap: Object.assign({}, zCap), dtcByCap: Object.assign({}, zCap),
     freshRecv:0, bncRecv:0, reclaimRecv:0,
     freshIss:0, bncIss:0, reclaimIss:0,
+    freshIssTF:0, bncIssTF:0, reclaimIssTF:0,
+    freshIssDist:0, bncIssDist:0, reclaimIssDist:0,
+    freshIssOther:0, bncIssOther:0, reclaimIssOther:0,
     consume:0, recovered:0,
     opening:{fresh:0,bnc:0,reclaim:0},
     monthsCount:0
@@ -834,6 +843,15 @@ function aggregateOilRange(list, fromV, toV){
     result.freshIss += num(e.oil.fresh.issuedTF)+num(e.oil.fresh.issuedDist)+num(e.oil.fresh.issuedOther);
     result.bncIss += num(e.oil.bnc.issuedTF)+num(e.oil.bnc.issuedDist)+num(e.oil.bnc.issuedOther);
     result.reclaimIss += num(e.oil.reclaim.issuedTF)+num(e.oil.reclaim.issuedDist)+num(e.oil.reclaim.issuedOther);
+    result.freshIssTF += num(e.oil.fresh.issuedTF);
+    result.bncIssTF += num(e.oil.bnc.issuedTF);
+    result.reclaimIssTF += num(e.oil.reclaim.issuedTF);
+    result.freshIssDist += num(e.oil.fresh.issuedDist);
+    result.bncIssDist += num(e.oil.bnc.issuedDist);
+    result.reclaimIssDist += num(e.oil.reclaim.issuedDist);
+    result.freshIssOther += num(e.oil.fresh.issuedOther);
+    result.bncIssOther += num(e.oil.bnc.issuedOther);
+    result.reclaimIssOther += num(e.oil.reclaim.issuedOther);
   });
   return result;
 }
@@ -889,10 +907,12 @@ function renderOilRangeSummary(){
 
   $('orRngRepaired').textContent = r.repaired;
   $('orRngDtc').textContent = r.dtc;
-  const totRecv = r.freshRecv + r.bncRecv + r.reclaimRecv;
-  const totIss = r.freshIss + r.bncIss + r.reclaimIss;
-  $('orRngReceived').textContent = fmt(totRecv);
-  $('orRngIssued').textContent = fmt(totIss);
+  const totRecv = r.freshRecv + r.bncRecv + r.reclaimRecv;   // table "Total" column — includes B&C
+  const totIss = r.freshIss + r.bncIss + r.reclaimIss;        // table "Total" column — includes B&C
+  const recvStatTotal = r.freshRecv + r.reclaimRecv;          // top stat card — Fresh + Reclaim only
+  const issStatTotal = r.freshIss + r.reclaimIss;              // top stat card — Fresh + Reclaim only
+  $('orRngReceived').textContent = fmt(recvStatTotal);
+  $('orRngIssued').textContent = fmt(issStatTotal);
 
   $('orRngFreshOpen').textContent = fmt(r.opening.fresh);
   $('orRngBncOpen').textContent = fmt(r.opening.bnc);
@@ -904,6 +924,21 @@ function renderOilRangeSummary(){
   $('orRngBncRecv').textContent = fmt(r.bncRecv);
   $('orRngReclaimRecv').textContent = fmt(r.reclaimRecv);
   $('orRngTotRecv').textContent = fmt(totRecv);
+
+  $('orRngFreshIssTF').textContent = fmt(r.freshIssTF);
+  $('orRngBncIssTF').textContent = fmt(r.bncIssTF);
+  $('orRngReclaimIssTF').textContent = fmt(r.reclaimIssTF);
+  $('orRngTotIssTF').textContent = fmt(r.freshIssTF + r.bncIssTF + r.reclaimIssTF);
+
+  $('orRngFreshIssDist').textContent = fmt(r.freshIssDist);
+  $('orRngBncIssDist').textContent = fmt(r.bncIssDist);
+  $('orRngReclaimIssDist').textContent = fmt(r.reclaimIssDist);
+  $('orRngTotIssDist').textContent = fmt(r.freshIssDist + r.bncIssDist + r.reclaimIssDist);
+
+  $('orRngFreshIssOther').textContent = fmt(r.freshIssOther);
+  $('orRngBncIssOther').textContent = fmt(r.bncIssOther);
+  $('orRngReclaimIssOther').textContent = fmt(r.reclaimIssOther);
+  $('orRngTotIssOther').textContent = fmt(r.freshIssOther + r.bncIssOther + r.reclaimIssOther);
 
   $('orRngFreshIss').textContent = fmt(r.freshIss);
   $('orRngBncIss').textContent = fmt(r.bncIss);
