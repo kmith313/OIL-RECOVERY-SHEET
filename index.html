@@ -258,8 +258,11 @@
       <!-- DATE RANGE SUMMARY: sums every month's data between From & To dates,
            while Opening Balance always stays fixed to whichever month was picked in "From". -->
       <div class="card" id="orRangeCard">
-        <h2>📅 Date Range Summary <span style="font-weight:500;font-size:12.5px;color:var(--text-mute)">— From/To me koi bhi date range chunein, sara data jud kar dikhega</span></h2>
-        <div class="note" id="orRangeNote" style="margin-bottom:12px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+          <h2 style="margin:0">📅 Date Range Summary <span style="font-weight:500;font-size:12.5px;color:var(--text-mute)">— From/To me koi bhi date range chunein, sara data jud kar dikhega</span></h2>
+          <button class="btn outline small" id="orRngExportBtn">⬇ Download Summary Excel</button>
+        </div>
+        <div class="note" id="orRangeNote" style="margin:10px 0 12px"></div>
 
         <h3 style="margin:18px 0 0;font-size:14px;color:var(--navy)">Total Transformer Repaired — Capacity Wise (Range Sum)</h3>
         <div class="orsheet-grid" id="orRngRepairedGrid"></div>
@@ -704,6 +707,7 @@ function initOilRecoveryUI(){
   $('orStdToggleHeader').addEventListener('click', toggleOrStandards);
   if (isAdmin) $('orStdSaveBtn').addEventListener('click', saveOilStandardsFromUI);
   $('orExportBtn').addEventListener('click', exportOilRecoveryExcel);
+  $('orRngExportBtn').addEventListener('click', exportOilRangeSummaryExcel);
 
   ['orFreshOpen','orFreshRecv','orFreshIssTF','orFreshIssDist','orFreshIssOther',
    'orBncOpen','orBncRecv','orBncIssTF','orBncIssDist','orBncIssOther',
@@ -1217,6 +1221,61 @@ function exportOilRecoveryExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'AZAMGARH');
   XLSX.writeFile(wb, `Oil_Recovery_Sheet_${MONTHS[month-1]}_${year}.xlsx`);
+}
+
+function exportOilRangeSummaryExcel(){
+  const fromV = $('orFrom').value, toV = $('orTo').value;
+  if (!fromV || !toV) { alert('From aur To date choose karein.'); return; }
+  const list = getOilListForCurrentView();
+  const r = aggregateOilRange(list, fromV, toV);
+
+  const view = (isAdmin && $('orView')) ? $('orView').value : '__mine__';
+  const viewLabel = view === '__mine__' ? (userName || 'My Entry')
+    : view === '__all__' ? 'All Workers Combined'
+    : (compiledOilWorkers.find(w=>w.fileName===view)?.label || view);
+
+  const rows = [];
+  rows.push(['OIL RECOVERY — DATE RANGE SUMMARY']);
+  rows.push(['View', viewLabel]);
+  rows.push(['Period', `${fromV} to ${toV}`]);
+  rows.push(['Months Included', r.monthsCount]);
+  rows.push([]);
+
+  rows.push(['TOTAL TRANSFORMER REPAIRED — CAPACITY WISE']);
+  rows.push(['Capacity', ...OIL_CAPACITIES.map(c=>c+' KVA'), 'TOTAL']);
+  rows.push(['NOS', ...OIL_CAPACITIES.map(c=>r.repairedByCap[c]||0), r.repaired]);
+  rows.push([]);
+
+  rows.push(['TOTAL TRANSFORMER DTC — CAPACITY WISE']);
+  rows.push(['Capacity', ...OIL_CAPACITIES.map(c=>c+' KVA'), 'TOTAL']);
+  rows.push(['NOS', ...OIL_CAPACITIES.map(c=>r.dtcByCap[c]||0), r.dtc]);
+  rows.push([]);
+
+  rows.push(['CALCULATED SUMMARY']);
+  rows.push(['Oil Consumed as per Standard (LTR)', r.consume]);
+  rows.push(['Oil Recovered as per Standard (LTR)', r.recovered]);
+  rows.push(['Total Oil Received — Fresh + Reclaim (LTR)', r.freshRecv + r.reclaimRecv]);
+  rows.push(['Total Oil Used / Issued — Fresh + Reclaim (LTR)', r.freshIss + r.reclaimIss]);
+  rows.push([]);
+
+  rows.push(['OIL BALANCE (LTR)']);
+  rows.push(['', 'Fresh Oil', 'B&C Oil', 'Reclaim Oil', 'Total']);
+  rows.push(['Opening Balance (From month)', r.opening.fresh, r.opening.bnc, r.opening.reclaim, r.opening.fresh+r.opening.bnc+r.opening.reclaim]);
+  rows.push(['Received During Month', r.freshRecv, r.bncRecv, r.reclaimRecv, r.freshRecv+r.bncRecv+r.reclaimRecv]);
+  rows.push(['Issued for TF Repairing', r.freshIssTF, r.bncIssTF, r.reclaimIssTF, r.freshIssTF+r.bncIssTF+r.reclaimIssTF]);
+  rows.push(['Issued to Dist. Division', r.freshIssDist, r.bncIssDist, r.reclaimIssDist, r.freshIssDist+r.bncIssDist+r.reclaimIssDist]);
+  rows.push(['Issued to Other Workshop / B&C Oil Issue for Reclaim', r.freshIssOther, r.bncIssOther, r.reclaimIssOther, r.freshIssOther+r.bncIssOther+r.reclaimIssOther]);
+  rows.push(['Total Issued', r.freshIss, r.bncIss, r.reclaimIss, r.freshIss+r.bncIss+r.reclaimIss]);
+  const freshClose = r.opening.fresh + r.freshRecv - r.freshIss;
+  const bncClose = r.opening.bnc + r.bncRecv - r.bncIss;
+  const reclaimClose = r.opening.reclaim + r.reclaimRecv - r.reclaimIss;
+  rows.push(['Closing Balance (To month end)', freshClose, bncClose, reclaimClose, freshClose+bncClose+reclaimClose]);
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Range Summary');
+  const safeLabel = viewLabel.replace(/[^a-zA-Z0-9]+/g,'_').slice(0,40);
+  XLSX.writeFile(wb, `Oil_Recovery_Summary_${safeLabel}_${fromV}_to_${toV}.xlsx`);
 }
 
 if ('serviceWorker' in navigator) {
